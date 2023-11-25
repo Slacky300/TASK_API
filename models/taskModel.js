@@ -25,10 +25,10 @@ const taskSchema = new mongoose.Schema({
         ref: 'User'
     },
 
-    assignedTo: {
+    assignedTo: [{
         type: mongoose.Schema.ObjectId,
         ref: 'User'
-    },
+    }]
 
 },{timestamps: true});
 
