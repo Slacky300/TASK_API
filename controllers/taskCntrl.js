@@ -1,71 +1,91 @@
-const Task = require('../models/task');
+const Task = require('../models/taskModel');
 const User = require('../models/userModel');
-const assignTasks = require('../helpers/assignTasks');
 
 const createTask = async (req, res) => {
+    try {
+        const { title, description, assignedTo } = req.body;
 
-    try{
-        const {title, description, status, assignedTo} = req.body;
-
-
-        if(!title || !description || !status){
-            return res.status(400).json({msg: "Please enter all fields"})
+        if (!title || !description) {
+            return res.status(400).json({ msg: "Please enter all fields" });
         }
 
+        const newTask = await Task.create({ title, description, creator: req.user.id });
 
-        const newTask = await Task.createOne({title, description, status, creator: req.user._id});
+        const user = await User.findById(req.user.id);
 
-        const user = await User.findById(req.user._id);
-
-        user.tasksCreated.push(newTask._id);
-        await user.save();
+        if (!user) {
+            return res.status(404).json({ msg: "User not found" });
+        }
 
         if(assignedTo){
-
-            const result =  await assignTasks(assignedTo, newTask._id);
-
-            if(result.errors.taskId){
-                return res.status(404).json({msg: result.errors.taskId})
+            for (const userId of assignedTo) {
+                const existingUser = await User.findById(userId);
+    
+                if (!existingUser) {
+                    return res.status(404).json({ msg: "User not found", user: userId });
+                }
+    
+                existingUser.tasksAssigned.push(newTask._id);
+                await existingUser.save();
+    
+                newTask.assignedTo.push(userId);
             }
-
-            if(result.errors.listOfUsers){
-                return res.status(400).json({msg: result.errors.listOfUsers})
-            }
-
-            if(result.errors.userNotFound.length > 0){
-                return res.status(404).json({msg: "User not found", users: result.errors.userNotFound})
-            }
-
-            res.status(201).json({msg: "Task created successfully", task: newTask, assignedTo: result.assignedTo, alreadyAssigned: result.alreadyAssigned})
-
+            await newTask.save();
         }
 
-        res.status(201).json(newTask)
-    }catch(err){
-        console.log(err)
-        res.status(500).json({msg: "Server error"})
+        res.status(201).json({
+            msg: "Task created successfully",
+            task: newTask,
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: "Server error" });
     }
-}
+};
 
-const assignTask = async (req, res) => {
+
+const assignTaskToUsers = async (req, res) => {
 
     try{
 
         const {taskId} = req.params;
-        const {userId} = req.body;
+        const {listOfUsers} = req.body;
+        const task = await Task.findById(taskId);
 
-        const result = await assignTasks(userId, taskId);
-
-        if(result.errors.taskId){
-            return res.status(404).json({msg: result.errors.taskId})
+        if(!task){
+            return res.status(404).json({msg: "Task not found"})
         }
 
-        if(result.errors.listOfUsers){
-            return res.status(400).json({msg: result.errors.listOfUsers})
+        if(!listOfUsers){
+            return res.status(400).json({msg: "Please enter all fields"})
         }
 
-        res.status(200).json({msg: "Task assigned successfully", assignedTo: result.assignedTo, alreadyAssigned: result.alreadyAssigned})
+        const usersAlreadyAssignedsWithTheTask = [];
 
+
+        for(const user of listOfUsers){
+
+            const existingUser = await User.findById(user);
+
+            if(!existingUser){
+                return res.status(404).json({msg: "User not found", user: user})
+            }
+
+            if(existingUser.tasksAssigned.includes(taskId)){
+
+                usersAlreadyAssignedsWithTheTask.push(existingUser._id);
+                continue;
+            }
+
+            existingUser.tasksAssigned.push(taskId);
+            await existingUser.save();
+
+            task.assignedTo.push(user);
+
+            await task.save();
+        }
+
+        res.status(200).json({msg: "Task assigned successfully", task: task, usersAlreadyAssignedsWithTheTask: usersAlreadyAssignedsWithTheTask})
 
     }catch(err){
         console.log(err)
@@ -78,7 +98,7 @@ const getAssignedTasks = async (req, res) => {
     
     try{
     
-        const tasks = await Task.find({assignedTo:{$in: [req.user._id]}});
+        const tasks = await Task.find({assignedTo:{$in: [req.user.id]}});
         
         if(!tasks){
             return res.status(404).json({msg: "No tasks found"})
@@ -95,7 +115,7 @@ const getCreatedTasks = async (req, res) => {
     
     try{
     
-        const tasks = await Task.find({creator: req.user._id});
+        const tasks = await Task.find({creator: req.user.id});
         
         if(!tasks){
             return res.status(404).json({msg: "No tasks found"})
@@ -109,18 +129,19 @@ const getCreatedTasks = async (req, res) => {
 }
 
 const updateTask = async (req, res) => {
+    try {
 
-    try{
-
-        const {taskId} = req.params;
-        const {title, description, status, assignedTo} = req.body;
+        const { taskId } = req.params;
+        const { title, description, status, assignedTo } = req.body;
 
         const task = await Task.findById(taskId);
 
+        if(task.creator.toString() !== req.user.id || task.assignedTo.includes(req.user.id) === false){
+            return res.status(401).json({msg: "Not authorized"})
+        }
 
-
-        if(!task){
-            return res.status(404).json({msg: "Task not found"})
+        if (!task) {
+            return res.status(404).json({ msg: "Task not found" });
         }
 
         task.title = title || task.title;
@@ -129,38 +150,46 @@ const updateTask = async (req, res) => {
 
         await task.save();
 
-        if(assignedTo){
+        const usersAlreadyAssignedsWithTheTask = [];
 
-            const result =  await assignTasks(assignedTo, task._id);
+        if (assignedTo) {
+            for (const user of assignedTo) {
+                const existingUser = await User.findById(user);
 
-            if(result.errors.taskId){
-                return res.status(404).json({msg: result.errors.taskId})
+                if (!existingUser) {
+                    return res.status(404).json({ msg: "User not found", user: user });
+                }
+
+                if (existingUser.tasksAssigned.includes(taskId)) {
+                    usersAlreadyAssignedsWithTheTask.push(existingUser._id);
+                    continue;
+                }
+
+                existingUser.tasksAssigned.push(taskId);
+                await existingUser.save();
+
+                task.assignedTo.push(user);
             }
 
-            if(result.errors.listOfUsers){
-                return res.status(400).json({msg: result.errors.listOfUsers})
-            }
-
-            if(result.errors.userNotFound.length  === assignedTo.length){
-                return res.status(404).json({msg: "Users not found", users: result.errors.userNotFound})
-            }
-
-            if(result.alreadyAssigned.length  === assignedTo.length){
-                return res.status(400).json({msg: "Task already assigned to all users", users: result.alreadyAssigned})
-            }
-
-            res.status(200).json({msg: "Task created successfully", task: task, assignedTo: result.assignedTo, alreadyAssigned: result.alreadyAssigned})
-
+            await task.save();
         }
 
-        res.status(200).json({msg: "Task updated successfully", task: task})
+        if (assignedTo.length === 0) {
+            task.assignedTo = undefined;
+            await task.save();
+        }
 
-    }catch(err){
-        console.log(err)
-        res.status(500).json({msg: "Server error"})
+        res.status(200).json({
+            msg: "Task updated successfully",
+            task: task,
+            usersAlreadyAssignedsWithTheTask: usersAlreadyAssignedsWithTheTask,
+       
+        });
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: "Server error" });
     }
-}
-
+};
 const deleteTask = async (req, res) => {   
 
 
@@ -174,20 +203,35 @@ const deleteTask = async (req, res) => {
             return res.status(404).json({msg: "Task not found"})
         }
 
-        const user = await User.findById(task.creator);
-
-        user.tasksCreated = user.tasksCreated.filter(task => task.toString() !== taskId.toString());
-
-        await user.save();
-
-        for(let i = 0; i< task.assignedTo.length; i++){
-                
-            const user = await User.findById(task.assignedTo[i]);
-    
-            user.tasksAssigned = user.tasksAssigned.filter(task => task.toString() !== taskId.toString());
-    
-            await user.save();
+        if(task.creator.toString() !== req.user.id){
+            return res.status(401).json({msg: "Not authorized"})
         }
+
+        const creator = await User.findById(task.creator);
+
+        if(!creator){
+            return res.status(404).json({msg: "User not found"})
+        }
+
+        creator.tasksCreated.pull(taskId);
+
+        await creator.save();
+
+        for(const user of task.assignedTo){
+
+            const existingUser = await User.findById(user);
+
+            if(!existingUser){
+
+                return res.status(404).json({msg: "User not found", user: user})
+            }
+
+            existingUser.tasksAssigned.pull(taskId);
+        
+            await existingUser.save();
+
+        }
+
 
         await task.remove();
 
@@ -199,11 +243,94 @@ const deleteTask = async (req, res) => {
     }
 }
 
+const getTasksAnalytics = async (req, res) => {
+
+    try{
+            
+            const tasks = await Task.find({creator: req.user.id});
+    
+            if(!tasks){
+                return res.status(404).json({msg: "No tasks found"})
+            }
+
+            const tasks_assinged = await Task.find({assignedTo:{$in: [req.user.id]}});
+
+            const tasks_analytics = {
+                total_tasks_created: tasks.length,
+                total_tasks_completed: 0,
+                total_tasks_in_progress: 0,
+                total_tasks_todo: 0,
+                total_tasks_assigned: 0,
+            }
+
+            for(const task of tasks_assinged){
+                if(task.status === "done"){
+                    tasks_analytics.total_tasks_completed += 1;
+                }else if(task.status === "inProgress"){
+                    tasks_analytics.total_tasks_in_progress += 1;
+                }else if(task.status === "todo"){
+                    tasks_analytics.total_tasks_todo += 1;
+                }
+                tasks_analytics.total_tasks_assigned += 1;
+            }
+
+            res.status(200).json(tasks_analytics)
+    
+
+
+
+    }catch(err){
+        console.log(err)
+        res.status(500).json({msg: "Server error"})
+    }
+
+}
+
+const getSingleTask = async (req, res) => {
+
+    try{
+
+        const {taskId} = req.params;
+
+        const task = await Task.findById(taskId);
+
+        if(!task){
+            return res.status(404).json({msg: "Task not found"})
+        }
+
+        res.status(200).json(task)
+
+    }catch(err){
+        console.log(err)
+        res.status(500).json({msg: "Server error"})
+    }
+}
+
+const getListOfAllTasks = async (req, res) => {
+
+    try{
+
+        const tasks = await Task.find();
+
+        if(!tasks){
+            return res.status(404).json({msg: "No tasks found"})
+        }  
+
+        res.status(200).json(tasks)
+    }catch(err){
+        console.log(err)
+        res.status(500).json({msg: "Server error"})
+    }
+}
+
 module.exports = {
     createTask,
-    assignTask,
+    assignTaskToUsers,
     getAssignedTasks,
     getCreatedTasks,
     updateTask,
-    deleteTask
+    deleteTask,
+    getTasksAnalytics,
+    getListOfAllTasks,
+    getSingleTask
 }

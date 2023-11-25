@@ -16,7 +16,8 @@ const registerUser = async (req, res) => {
         if(existingUser){
             return res.status(400).json({msg: "User already exists"})
         }
-        const newUser = await User.createOne({name, email, password});
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = await User.create({name, email, password: hashedPassword});
         res.status(201).json(newUser)
 
 
@@ -43,6 +44,8 @@ const loginUser = async (req, res) => {
             return res.status(400).json({msg: "Invalid credentials"})
         }
         const token = jwt.sign({id: existingUser._id}, process.env.JWT_SECRET, {expiresIn: 3600})
+
+        
         res.status(200).json({token, user: {id: existingUser._id, name: existingUser.name, email: existingUser.email}})
     
     }catch(err){
@@ -51,3 +54,5 @@ const loginUser = async (req, res) => {
     }
 
 }
+
+module.exports = {registerUser, loginUser}
