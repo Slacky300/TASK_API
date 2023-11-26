@@ -60,6 +60,7 @@ To secure the API,user authentication is implemented using a middleware like JWT
     Endpoint /register
 
     json_body: {
+        
         "name": "Sample"
         "email": "s@dev.com",
         "password": "12345678"
@@ -69,6 +70,7 @@ To secure the API,user authentication is implemented using a middleware like JWT
     Endpoint /login
 
     json_body: {
+
         "email": "s@dev.com",
         "password": "12345678"
     }
@@ -83,6 +85,7 @@ To secure the API,user authentication is implemented using a middleware like JWT
     Endpoint /create
 
     json_body: {
+
         "title": "Task Title",
         "description": "Task Description",
         "assignedTo": ["user_id", "user_id1"]  //not mandatory
