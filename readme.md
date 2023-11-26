@@ -45,7 +45,7 @@ This repository contains the backend implementation of a comprehensive Task Mana
 
 # Accessing the Endpoints of TASK API
 
-    To secure the API,user authentication is implemented using a middleware like JWT (JSON Web Tokens). It ensures that only authenticated users can perform CRUD operations.
+To secure the API,user authentication is implemented using a middleware like JWT (JSON Web Tokens). It ensures that only authenticated users can perform CRUD operations.
 
 
 # API Endpoints
@@ -59,7 +59,7 @@ This repository contains the backend implementation of a comprehensive Task Mana
 
     Endpoint /register
 
-    json_body:{
+    json_body: {
         "name": "Sample"
         "email": "s@dev.com",
         "password": "12345678"
@@ -68,7 +68,7 @@ This repository contains the backend implementation of a comprehensive Task Mana
 2. **Login**
     Endpoint /login
 
-    json_body:{
+    json_body: {
         "email": "s@dev.com",
         "password": "12345678"
     }
@@ -82,7 +82,7 @@ This repository contains the backend implementation of a comprehensive Task Mana
 
     Endpoint /create
 
-    json body: {
+    json_body: {
         "title": "Task Title",
         "description": "Task Description",
         "assignedTo": ["user_id", "user_id1"]  //not mandatory
